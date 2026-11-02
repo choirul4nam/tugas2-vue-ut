@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tracking DO - SITTA</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="top">
+    <h1>SITTA – Tracking Delivery Order</h1>
+    <nav>
+      <a href="index.html">Beranda</a>
+      <a href="stok.html">Stok</a>
+      <a href="tracking.html" class="aktif">Tracking DO</a>
+    </nav>
+  </header>
+
+  <!-- id="app" = titik pemasangan instance Vue (el: '#app' di js/tracking-app.js) -->
+  <main id="app">
+    <!-- v-if: pesan sukses hanya muncul jika notice terisi; {{ }} (mustache) menampilkan teksnya -->
+    <p v-if="notice" class="sukses">{{ notice }}</p>
+
+    <!-- CARI DO -->
+    <section class="card">
+      <h2>Lacak Delivery Order</h2>
+      <!-- v-model.trim: two-way binding ke cari.nomor, spasi di tepi dibuang otomatis.
+           @keyup.enter: menekan Enter memanggil cariDO() (sama seperti tombol Cari). -->
+      <div class="baris-aksi">
+        <div style="flex:1; min-width:220px">
+          <label for="cari">Nomor DO</label>
+          <input id="cari" v-model.trim="cari.nomor" placeholder="mis. DO2025-001" @keyup.enter="cariDO">
+        </div>
+        <button class="btn" @click="cariDO">Cari</button>
+      </div>
+
+      <!-- Pesan error pencarian (DO tidak ditemukan / input kosong) -->
+      <p v-if="cari.pesan" class="err" style="margin-top:8px">{{ cari.pesan }}</p>
+
+      <!-- Hasil pencarian: blok ini hanya dirender jika DO ditemukan (cari.hasil bukan null) -->
+      <div v-if="cari.hasil" style="margin-top:12px">
+        <table>
+          <tr><th>Nomor DO</th><td>{{ cari.hasil.nomor }}</td></tr>
+          <tr><th>NIM / Nama</th><td>{{ cari.hasil.nim }} – {{ cari.hasil.nama }}</td></tr>
+          <tr><th>Status</th><td><span class="badge menipis">{{ cari.hasil.status }}</span></td></tr>
+          <tr><th>Ekspedisi</th><td>{{ cari.hasil.ekspedisi }}</td></tr>
+          <tr><th>Tanggal Kirim</th><td>{{ cari.hasil.tanggalKirim }}</td></tr>
+          <tr><th>Paket</th><td>{{ cari.hasil.paket }} – {{ namaPaket(cari.hasil.paket) }}</td></tr>
+          <tr><th>Total</th><td>{{ formatRupiah(cari.hasil.total) }}</td></tr>
+        </table>
+        <h3>Riwayat Perjalanan</h3>
+        <!-- v-for dengan (item, index): menampilkan tiap langkah perjalanan paket -->
+        <ul class="timeline">
+          <li v-for="(p, i) in cari.hasil.perjalanan" :key="i">
+            {{ p.keterangan }}<small>{{ p.waktu }}</small>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- DAFTAR DO -->
+    <section class="card">
+      <h2>Daftar Delivery Order ({{ daftarDO.length }})</h2>
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr><th>Nomor DO</th><th>NIM</th><th>Nama</th><th>Ekspedisi</th><th>Paket</th><th>Tgl Kirim</th><th>Status</th><th class="angka">Total</th><th></th></tr>
+          </thead>
+          <tbody>
+            <!-- List rendering dari computed daftarDO (objek tracking diubah jadi array).
+                 formatRupiah(): method pemformat angka. @click="lihat(...)" memicu pelacakan DO baris ini. -->
+            <tr v-for="d in daftarDO" :key="d.nomor">
+              <td><b>{{ d.nomor }}</b></td>
+              <td>{{ d.nim }}</td>
+              <td>{{ d.nama }}</td>
+              <td>{{ d.ekspedisi }}</td>
+              <td>{{ d.paket }}</td>
+              <td>{{ d.tanggalKirim }}</td>
+              <td>{{ d.status }}</td>
+              <td class="angka">{{ formatRupiah(d.total) }}</td>
+              <td><button class="btn kecil" @click="lihat(d.nomor)">Lacak</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- FORM DO BARU -->
+    <section class="card">
+      <h2>Tambah Delivery Order Baru</h2>
+      <!-- @submit.prevent: jalankan tambah() tanpa reload halaman; novalidate: validasi lewat method validate() -->
+      <form @submit.prevent="tambah" novalidate>
+        <div class="grid">
+          <div>
+            <label>Nomor DO (otomatis)</label>
+            <!-- :value = one-way binding dari computed nomorBaru (DO + tahun + sequence); readonly agar tidak diubah -->
+            <input :value="nomorBaru" readonly>
+          </div>
+          <div>
+            <label>NIM</label>
+            <input v-model="form.nim" placeholder="9-12 digit" :class="{ invalid: errors.nim }">
+            <span class="err" v-if="errors.nim">{{ errors.nim }}</span>
+          </div>
+          <div>
+            <label>Nama</label>
+            <input v-model.trim="form.nama" :class="{ invalid: errors.nama }">
+            <span class="err" v-if="errors.nama">{{ errors.nama }}</span>
+          </div>
+          <div>
+            <label>Ekspedisi</label>
+            <!-- Opsi dari pengirimanList lewat v-for; :class menandai field invalid (border merah) -->
+            <select v-model="form.ekspedisi" :class="{ invalid: errors.ekspedisi }">
+              <option value="">-- pilih ekspedisi --</option>
+              <option v-for="p in pengirimanList" :key="p.kode" :value="p.nama">{{ p.kode }} – {{ p.nama }}</option>
+            </select>
+            <span class="err" v-if="errors.ekspedisi">{{ errors.ekspedisi }}</span>
+          </div>
+          <div>
+            <label>Paket Bahan Ajar</label>
+            <!-- Pilihan paket menampilkan kode dan nama paket; nilai yang disimpan = kode paket -->
+            <select v-model="form.paket" :class="{ invalid: errors.paket }">
+              <option value="">-- pilih paket --</option>
+              <option v-for="p in paket" :key="p.kode" :value="p.kode">{{ p.kode }} – {{ p.nama }}</option>
+            </select>
+            <span class="err" v-if="errors.paket">{{ errors.paket }}</span>
+          </div>
+          <div>
+            <label>Tanggal Kirim</label>
+            <!-- Nilai awal diisi tanggal hari ini (fungsi hariIni() di tracking-app.js), tetap bisa diubah manual -->
+            <input type="date" v-model="form.tanggalKirim" :class="{ invalid: errors.tanggalKirim }">
+            <span class="err" v-if="errors.tanggalKirim">{{ errors.tanggalKirim }}</span>
+          </div>
+        </div>
+
+        <!-- Detail isi paket: v-if="paketTerpilih" -> muncul hanya setelah paket dipilih.
+             isiPaketDetail (computed) mengubah kode MK di dalam paket menjadi kode + judul + harga. -->
+        <div v-if="paketTerpilih" class="info" style="margin-top:12px">
+          <b>{{ paketTerpilih.kode }} – {{ paketTerpilih.nama }}</b>
+          <ul style="margin:6px 0 0">
+            <li v-for="m in isiPaketDetail" :key="m.kode">{{ m.kode }} – {{ m.judul }} ({{ formatRupiah(m.harga) }})</li>
+          </ul>
+        </div>
+
+        <!-- Total harga otomatis dari computed totalHarga (harga paket terpilih) -->
+        <p style="margin-top:12px"><b>Total Harga: </b>{{ formatRupiah(totalHarga) }}</p>
+
+        <div class="baris-aksi">
+          <button type="submit" class="btn">Simpan DO</button>
+          <button type="button" class="btn sekunder" @click="resetForm">Reset</button>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <!-- Urutan penting: pustaka Vue dimuat dulu, baru kode aplikasi (js/tracking-app.js) -->
+  <script src="https://cdn.jsdelivr.net/npm/vue@2.7.16/dist/vue.js"></script>
+  <script src="js/tracking-app.js"></script>
+</body>
+</html>
